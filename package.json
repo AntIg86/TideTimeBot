@@ -1,0 +1,36 @@
+{
+  "name": "tide-time-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for tide times using grammY",
+  "main": "dist/bot.js",
+  "scripts": {
+    "start": "node dist/bot.js",
+    "dev": "ts-node src/bot.ts",
+    "build": "tsc",
+    "lint": "eslint src/**/*.ts"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "grammy",
+    "typescript",
+    "tides"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "axios": "^1.6.0",
+    "date-fns": "^3.0.0",
+    "dotenv": "^16.3.0",
+    "express": "^5.2.1",
+    "fs-extra": "^11.2.0",
+    "grammy": "^1.20.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.0",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
