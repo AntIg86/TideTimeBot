@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: tide-time-bot
+    env: docker
+    region: frankfurt
+    plan: free
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: PORT
+        value: 3000
