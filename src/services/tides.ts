@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { isSameDay, parseISO, addSeconds } from 'date-fns';
+import { isSameDay, parseISO, addSeconds, format } from 'date-fns';
 
 interface TideData {
   highTides: string[];
@@ -28,6 +28,17 @@ function formatOffset(seconds: number) {
 }
 
 /**
+ * Interpolates the peak/trough time using quadratic fit.
+ * @returns Offset in hours from the central point (t2)
+ */
+function interpolateTrend(y1: number, y2: number, y3: number): number {
+    const a = (y1 + y3) / 2 - y2;
+    const b = (y3 - y1) / 2;
+    if (Math.abs(a) < 1e-10) return 0; // Linear or flat, no peak offset
+    return -b / (2 * a);
+}
+
+/**
  * Finds local maxima (high tides) and minima (low tides) in hourly data.
  * @param times List of ISO time strings
  * @param heights List of sea level heights
@@ -45,17 +56,49 @@ function findHighLowTides(times: string[], heights: number[], utcOffsetSeconds: 
     const curr = heights[i];
     const next = heights[i + 1];
 
-    const timeStr = times[i];
-    // Create Date object adjusted for offset
-    const offsetString = formatOffset(utcOffsetSeconds);
-    const date = new Date(`${timeStr}${offsetString}`);
+    let type: 'high' | 'low' | null = null;
 
     if (curr > prev && curr >= next) {
-        events.push({ time: date, localTimeStr: timeStr, type: 'high' });
-    } else if (curr < prev && curr <= next) { // Trough
-        if (curr < prev && curr < next) {
-             events.push({ time: date, localTimeStr: timeStr, type: 'low' });
-        }
+        type = 'high';
+    } else if (curr < prev && curr <= next) {
+        type = 'low';
+    }
+
+    if (type) {
+        // Quadratic interpolation
+        const offsetHours = interpolateTrend(prev, curr, next);
+        
+        // Base time (hourly)
+        const baseTime = new Date(times[i] + "Z"); // Treat as UTC for calculation then adjust? 
+        // Actually times[i] from open-meteo with timezone='auto' is a local string. 
+        // But to do math, best to convert to timestamp.
+        // Let's assume the API returns ISO strings like "2023-10-10T10:00".
+        // If we treat it as UTC, we can add hours easily.
+        
+        const baseTimestamp = new Date(times[i]).getTime(); // This uses local system time interpretation which is dangerous.
+        // Better: parse as ISO then manipulate.
+        // But wait, times[i] comes from API. If API says 10:00 and we are in UTC+1, it means 10:00 Local.
+        // We want to preserve "10:00 Local" + offset.
+        
+        // Let's rely on string manipulation or Date UTC methods to avoid system timezone interference.
+        const baseDate = new Date(times[i] + "Z"); // Force UTC interpretation of the string
+        const interpolatedTime = baseDate.getTime() + (offsetHours * 3600 * 1000);
+        const finalDateUTC = new Date(interpolatedTime);
+
+        // Now we need to convert this back to a Local Time String "YYYY-MM-DDTHH:mm"
+        // Since we treated the input as UTC, the output UTC components correspond to the local time components.
+        // e.g. Input "10:00" -> UTC 10:00. Offset +0.5h -> UTC 10:30. Output String "10:30".
+        const localTimeStr = finalDateUTC.toISOString().substring(0, 16); // "YYYY-MM-DDTHH:mm"
+
+        // For the 'time' property (Date object), we need the *real* UTC time.
+        // The 'localTimeStr' is the wall-clock time in the location.
+        // 'utcOffsetSeconds' tells us the offset of that location.
+        // Real UTC = Local - Offset.
+        // finalDateUTC represents Local Time (stored in UTC container).
+        const realTimestamp = finalDateUTC.getTime() - (utcOffsetSeconds * 1000);
+        const realDate = new Date(realTimestamp);
+
+        events.push({ time: realDate, localTimeStr: localTimeStr, type: type });
     }
   }
   
@@ -150,26 +193,21 @@ export async function getTides(lat: number, lon: number): Promise<TideData> {
     } : null;
 
     // 4. Determine Current Status
-    let currentIndex = 0;
-    let minDiff = Infinity;
-    
-    for(let i=0; i<times.length; i++) {
-        const tDate = new Date(times[i] + "Z"); 
-        const nDate = new Date(nowLocal.toISOString().replace('Z', '') + "Z"); 
-        
-        const diff = Math.abs(tDate.getTime() - nDate.getTime());
-        if (diff < minDiff) {
-            minDiff = diff;
-            currentIndex = i;
-        }
-    }
-    
     let status = 'Unknown 🤷';
-    if (currentIndex < heights.length - 1) {
-        if (heights[currentIndex + 1] > heights[currentIndex]) {
+    
+    if (nextTideEvent) {
+        if (nextTideEvent.type === 'high') {
             status = 'Rising 🌊';
         } else {
             status = 'Falling 🏖️';
+        }
+    } else {
+        // Fallback if no future tide found (rare with forecast_days=2)
+        // Check last event
+        const pastEvents = allEvents.filter(e => e.time.getTime() <= nowUTC.getTime());
+        if (pastEvents.length > 0) {
+            const lastEvent = pastEvents[pastEvents.length - 1];
+            status = lastEvent.type === 'high' ? 'Falling 🏖️' : 'Rising 🌊';
         }
     }
 
