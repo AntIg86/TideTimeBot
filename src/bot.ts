@@ -1,5 +1,4 @@
 import { Bot } from 'grammy';
-import express from 'express';
 import { config } from './config';
 import { getCoordinates } from './services/geocoding';
 import { getTides } from './services/tides';
@@ -102,31 +101,5 @@ ${eventsFormatted || '_No more tides today_'}
   }
 });
 
-// 4. Setup Express Server (Keep-Alive)
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.get('/', (req, res) => {
-  res.send('Bot is running 🚀');
-});
-
-// 5. Start Everything
-const start = async () => {
-  try {
-    // Start Express
-    app.listen(PORT, () => {
-      console.log(`Web server running on port ${PORT}`);
-    });
-
-    // Start Bot
-    await bot.start({
-      onStart: (botInfo) => {
-        console.log(`Bot @${botInfo.username} started!`);
-      },
-    });
-  } catch (error) {
-    console.error('Failed to start:', error);
-  }
-};
-
-start();
+// 4. Export the Bot instance (for Vercel Webhook)
+export { bot };

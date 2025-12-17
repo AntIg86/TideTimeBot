@@ -19,11 +19,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@types/express": "^5.0.6",
     "axios": "^1.6.0",
     "date-fns": "^3.0.0",
     "dotenv": "^16.3.0",
-    "express": "^5.2.1",
     "fs-extra": "^11.2.0",
     "grammy": "^1.20.0"
   },
