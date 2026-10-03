@@ -95,11 +95,29 @@ describe('renderForecast', () => {
 describe('renderRichForecast', () => {
   const html = renderRichForecast(forecast, { name: 'Lisbon, Portugal' });
 
-  it('uses paragraphs and rules instead of newlines', () => {
+  it('uses paragraphs and a section heading instead of newlines and rules', () => {
     expect(html).not.toContain('\n');
-    expect(html.startsWith('<p>🌊 <b>Tide forecast</b><br>📍 <b>Lisbon, Portugal</b></p><hr/>')).toBe(true);
-    expect(html).toContain('<blockquote>• <b>05:12</b>  🌊 high tide · +1.4 m<br>• <b>11:30</b>');
-    expect(html.endsWith('<footer>🌍 <i>Europe/Lisbon</i></footer>')).toBe(true);
+    expect(html).not.toContain('<hr/>');
+    expect(html.startsWith('<p>🌊 <b>Tide forecast</b><br>📍 <b>Lisbon, Portugal</b></p><p>📈 <b>Now:</b>')).toBe(true);
+    expect(html.endsWith('</details><footer>&#160;<br>🌍 <i>Europe/Lisbon</i></footer>')).toBe(true);
+  });
+
+  it("shows today's tides as a table with the next tide highlighted", () => {
+    expect(html).toContain(
+      '<h4>📅 <b>Today, Sat, Oct 3</b></h4><table bordered striped>' +
+        '<tr><th>Time</th><th>Tide</th><th align="right">Height</th></tr>' +
+        '<tr><td><b>05:12</b></td><td>🌊 high tide</td><td align="right">+1.4 m</td></tr>' +
+        '<tr><td><b>11:30</b></td><td>🏖️ low tide</td><td align="right">−1.2 m</td></tr>' +
+        '<tr><td><mark><b>17:45</b></mark></td><td><mark>🌊 high tide</mark></td><td align="right"><mark>+1.5 m</mark></td></tr>' +
+        '</table>',
+    );
+  });
+
+  it('says so when today has no tides', () => {
+    const empty = { ...forecast, today: { ...forecast.today, events: [] } };
+    const rich = renderRichForecast(empty, { name: 'X' });
+    expect(rich).toContain('<h4>📅 <b>Today, Sat, Oct 3</b></h4><p><i>no tides</i></p>');
+    expect(rich).not.toContain('<th>');
   });
 
   it('puts the upcoming days in a padded table inside details', () => {
