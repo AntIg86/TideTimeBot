@@ -3,6 +3,7 @@ import path from 'node:path';
 import { config } from '../config';
 import { UserError } from '../errors';
 import { fetchJson } from './http';
+import { LruMap } from './lruMap';
 
 // Vercel only allows writing to /tmp; locally keep the cache next to the project.
 const CACHE_FILE = process.env.VERCEL
@@ -10,6 +11,8 @@ const CACHE_FILE = process.env.VERCEL
   : path.join(process.cwd(), 'cities_cache.json');
 
 const MAX_QUERY_LENGTH = 100;
+/** Keeps the cache file small: each new city rewrites the whole file. */
+const MAX_CACHE_ENTRIES = 500;
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
 const USER_AGENT = `TideTimeBot/1.1${config.nominatimEmail ? ` (${config.nominatimEmail})` : ''}`;
 
@@ -28,26 +31,29 @@ interface NominatimPlace {
   display_name: string;
 }
 
-let cache: Map<string, Place> | null = null;
+let cache: LruMap<string, Place> | null = null;
 let pendingSave: Promise<void> = Promise.resolve();
 
-async function getCache(): Promise<Map<string, Place>> {
+async function getCache(): Promise<LruMap<string, Place>> {
   if (!cache) {
+    cache = new LruMap(MAX_CACHE_ENTRIES);
     try {
       const raw = JSON.parse(await readFile(CACHE_FILE, 'utf8')) as Record<string, Place>;
       // Entries written by older versions have no shortName; drop them.
-      cache = new Map(Object.entries(raw).filter(([, place]) => place.shortName));
+      for (const [key, place] of Object.entries(raw)) {
+        if (place.shortName) cache.set(key, place);
+      }
     } catch {
-      cache = new Map();
+      // No cache file yet, or it is unreadable: start empty.
     }
   }
   return cache;
 }
 
-function saveCache(entries: Map<string, Place>): void {
+function saveCache(entries: LruMap<string, Place>): void {
   // Serialize writes so concurrent lookups don't interleave partial files.
   pendingSave = pendingSave
-    .then(() => writeFile(CACHE_FILE, JSON.stringify(Object.fromEntries(entries), null, 2)))
+    .then(() => writeFile(CACHE_FILE, JSON.stringify(Object.fromEntries(entries.toEntries()), null, 2)))
     .catch((error) => console.error('Error saving geocoding cache:', error));
 }
 

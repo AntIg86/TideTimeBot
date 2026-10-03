@@ -16,7 +16,7 @@ const forecast: TideForecast = {
       { time: Date.UTC(2026, 9, 3, 16, 45), type: 'high', height: 1.46 },
     ],
     conditions: {
-      time: Date.UTC(2026, 9, 2, 23, 0),
+      date: '2026-10-03',
       waveMax: 1.8,
       windMax: 6.04,
       sunrise: Date.UTC(2026, 9, 3, 6, 32),

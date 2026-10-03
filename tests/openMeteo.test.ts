@@ -9,12 +9,12 @@ const marine = (latitude: number, longitude: number, heights: (number | null)[])
   hourly: hourly(heights),
   daily: { time: [0], wave_height_max: [1.1] },
 });
-const weather = { daily: { time: [0], wind_speed_10m_max: [5], sunrise: [100], sunset: [200] } };
+const weather = { timezone: 'Europe/Moscow', daily: { time: [0], wind_speed_10m_max: [5], sunrise: [100], sunset: [200] } };
 
-function stubApis(handlers: { marine: (url: URL) => unknown }) {
+function stubApis(handlers: { marine: (url: URL) => unknown; weather?: unknown }) {
   const fetchMock = vi.fn(async (input: URL | string) => {
     const url = new URL(input);
-    const body = url.host.startsWith('marine') ? handlers.marine(url) : weather;
+    const body = url.host.startsWith('marine') ? handlers.marine(url) : (handlers.weather ?? weather);
     return new Response(JSON.stringify(body));
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -24,6 +24,23 @@ function stubApis(handlers: { marine: (url: URL) => unknown }) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('fetchForecast', () => {
+  it('merges daily rows by local date when the two APIs pick different timezones', async () => {
+    // 2026-10-04 00:00 UTC; the marine cell is in UTC+3, the weather cell in UTC+4.
+    const oct4 = Date.UTC(2026, 9, 4) / 1000;
+    stubApis({
+      marine: () => ({ ...marine(43.6, 39.7, [0.1, 0.3, 0.2]), daily: { time: [oct4 - 3 * 3600], wave_height_max: [1.1] } }),
+      weather: {
+        timezone: 'Asia/Dubai',
+        daily: { time: [oct4 - 4 * 3600], wind_speed_10m_max: [5], sunrise: [oct4], sunset: [oct4 + 40_000] },
+      },
+    });
+
+    const forecast = await fetchForecast(43.6, 39.7);
+    expect(forecast.daily).toEqual([
+      { date: '2026-10-04', waveMax: 1.1, windMax: 5, sunrise: oct4 * 1000, sunset: (oct4 + 40_000) * 1000 },
+    ]);
+  });
+
   it('uses the place itself when it has sea-level data', async () => {
     const fetchMock = stubApis({ marine: () => marine(43.6, 39.7, [0.1, 0.3, 0.2]) });
     const forecast = await fetchForecast(43.6, 39.7);
