@@ -39,6 +39,8 @@ export interface TideForecast {
   hasTides: boolean;
   trend: TideTrend | null;
   next: TideEvent | null;
+  /** Current sea surface temperature, °C. */
+  waterTemperature: number | null;
   today: DayTides & { conditions: DailyConditions | null };
   upcoming: DayTides[];
 }
@@ -136,6 +138,7 @@ export function findTideExtremes(series: SeaLevelSeries, minSwing = MIN_TIDE_SWI
 export function buildForecast(input: {
   seaLevel: SeaLevelSeries;
   daily: DailyConditions[];
+  waterTemperature?: number | null;
   timezone: string;
   now: number;
   days: number;
@@ -170,6 +173,7 @@ export function buildForecast(input: {
     hasTides,
     trend,
     next,
+    waterTemperature: input.waterTemperature ?? null,
     today: { ...tidesOn(today), conditions },
     upcoming: Array.from({ length: input.days }, (_, i) => tidesOn(addDays(today, i + 1))),
   };
