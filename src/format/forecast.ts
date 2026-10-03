@@ -166,7 +166,8 @@ export function renderRichForecast(forecast: TideForecast, place: PlaceLabel): s
   const { header, now, details, schedule, footer } = buildSections(forecast, place);
   const paragraph = (lines: string[]) => `<p>${lines.join('<br>')}</p>`;
   // No <hr/> here: tables, <details> and paragraph spacing already separate the parts in
-  // rich messages, and extra rules ended up between blocks that belong together.
+  // rich messages, and extra rules ended up between blocks that belong together. The only
+  // rule left is the one Telegram draws above <footer>.
   const blocks = [paragraph(header), paragraph(now)];
   if (details.length) blocks.push(paragraph(details));
 
@@ -197,6 +198,8 @@ export function renderRichForecast(forecast: TideForecast, place: PlaceLabel): s
     );
   }
 
-  blocks.push(paragraph([footer]));
+  // Telegram draws a rule above <footer> with no padding; the leading line break keeps the
+  // text off it. &#160; stops the empty first line from being trimmed away.
+  blocks.push(`<footer>&#160;<br>${footer}</footer>`);
   return blocks.join('');
 }

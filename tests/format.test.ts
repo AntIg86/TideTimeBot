@@ -99,7 +99,7 @@ describe('renderRichForecast', () => {
     expect(html).not.toContain('\n');
     expect(html).not.toContain('<hr/>');
     expect(html.startsWith('<p>🌊 <b>Tide forecast</b><br>📍 <b>Lisbon, Portugal</b></p><p>📈 <b>Now:</b>')).toBe(true);
-    expect(html.endsWith('</details><p>🌍 <i>Europe/Lisbon</i></p>')).toBe(true);
+    expect(html.endsWith('</details><footer>&#160;<br>🌍 <i>Europe/Lisbon</i></footer>')).toBe(true);
   });
 
   it("shows today's tides as a table with the next tide highlighted", () => {
