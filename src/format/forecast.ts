@@ -80,9 +80,12 @@ export function renderForecast(forecast: TideForecast, place: PlaceLabel): strin
   }
 
   // Today's conditions
+  const details: string[] = [];
+  if (forecast.waterTemperature !== null) {
+    details.push(`🌡️ ${label('water')} ${t('degrees', { value: formatNumber(forecast.waterTemperature) })}`);
+  }
   const conditions = today.conditions;
   if (conditions) {
-    const details: string[] = [];
     // ~0 m waves usually means a sheltered bay or river the wave model does not cover.
     if (conditions.waveMax !== null && conditions.waveMax >= 0.05) {
       details.push(`🏄 ${label('waves')} ${t('upToMeters', { value: formatNumber(conditions.waveMax) })}`);
@@ -93,8 +96,8 @@ export function renderForecast(forecast: TideForecast, place: PlaceLabel): strin
     if (conditions.sunrise !== null && conditions.sunset !== null) {
       details.push(`☀️ ${label('sun')} 🌅 ${time(conditions.sunrise)} · 🌇 ${time(conditions.sunset)}`);
     }
-    if (details.length) lines.push('', ...details);
   }
+  if (details.length) lines.push('', ...details);
   lines.push(DIVIDER);
 
   if (forecast.hasTides) lines.push(...renderSchedule(forecast, time));

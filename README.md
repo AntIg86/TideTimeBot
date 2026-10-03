@@ -6,7 +6,7 @@ A Telegram bot that shows tide times for any coastal location: a detailed view f
 
 - **Today in detail**: high/low tide times with heights, rising/falling trend and the next tide.
 - **7-day outlook**: high and low tide times for each of the next 7 days.
-- **Marine conditions**: today's maximum wave height and wind speed, sunrise and sunset.
+- **Marine conditions**: current water temperature, today's maximum wave height and wind speed, sunrise and sunset.
 - **City search or shared location**: send a city name or a location pin 📍.
 - **Nearest sea point**: if the place itself has no sea-level data (bays, fjords, river mouths), tides come from the nearest sea point within 60 km, and the message says how far it is.
 - **Tideless seas**: for places like the Black Sea or the Baltic, where the level only drifts with wind, the bot says so instead of listing noise.

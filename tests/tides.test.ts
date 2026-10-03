@@ -113,6 +113,11 @@ describe('buildForecast', () => {
     expect(forecast.trend).toBe(forecast.next!.type === 'high' ? 'rising' : 'falling');
   });
 
+  it('passes the water temperature through', () => {
+    expect(forecast.waterTemperature).toBeNull();
+    expect(buildForecast({ seaLevel, daily, timezone, now, days: 7, waterTemperature: 18.5 }).waterTemperature).toBe(18.5);
+  });
+
   it('picks daily conditions for the local today', () => {
     expect(forecast.today.conditions?.waveMax).toBe(1.2);
   });

@@ -24,6 +24,7 @@ interface MarineResponse {
   latitude: number;
   longitude: number;
   timezone: string;
+  current?: { sea_surface_temperature?: number | null };
   hourly: { time: number[]; sea_level_height_msl: (number | null)[] };
   daily?: { time: number[]; wave_height_max?: (number | null)[] };
 }
@@ -42,6 +43,8 @@ export interface RawForecast {
   timezone: string;
   seaLevel: SeaLevelSeries;
   daily: DailyConditions[];
+  /** Current sea surface temperature, °C. */
+  waterTemperature: number | null;
   /** Set when tides come from a nearby sea point because the place itself has no data. */
   seaPoint: (Point & { distanceKm: number }) | null;
 }
@@ -68,6 +71,7 @@ const toMs = (seconds: number | null | undefined): number | null =>
 function fetchMarine(point: Point): Promise<MarineResponse> {
   return fetchJson<MarineResponse>(
     buildUrl(MARINE_URL, [point], {
+      current: 'sea_surface_temperature',
       hourly: 'sea_level_height_msl',
       daily: 'wave_height_max',
       past_days: PAST_DAYS,
@@ -141,6 +145,7 @@ export async function fetchForecast(lat: number, lon: number): Promise<RawForeca
     timezone: marine.timezone,
     seaLevel: { times: marine.hourly.time.map((time) => time * 1000), heights: marine.hourly.sea_level_height_msl },
     daily: [...daily.values()],
+    waterTemperature: marine.current?.sea_surface_temperature ?? null,
     seaPoint,
   };
 }

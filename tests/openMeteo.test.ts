@@ -24,6 +24,11 @@ function stubApis(handlers: { marine: (url: URL) => unknown; weather?: unknown }
 afterEach(() => vi.unstubAllGlobals());
 
 describe('fetchForecast', () => {
+  it('reads the current sea surface temperature', async () => {
+    stubApis({ marine: () => ({ ...marine(43.6, 39.7, [0.1, 0.3, 0.2]), current: { sea_surface_temperature: 20.9 } }) });
+    expect((await fetchForecast(43.6, 39.7)).waterTemperature).toBe(20.9);
+  });
+
   it('merges daily rows by local date when the two APIs pick different timezones', async () => {
     // 2026-10-04 00:00 UTC; the marine cell is in UTC+3, the weather cell in UTC+4.
     const oct4 = Date.UTC(2026, 9, 4) / 1000;
@@ -46,6 +51,7 @@ describe('fetchForecast', () => {
     const forecast = await fetchForecast(43.6, 39.7);
     expect(forecast.seaPoint).toBeNull();
     expect(forecast.seaLevel.heights).toEqual([0.1, 0.3, 0.2]);
+    expect(forecast.waterTemperature).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

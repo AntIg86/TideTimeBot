@@ -22,6 +22,8 @@ const messages = {
   low: 'low tide',
   today: 'Today',
   noTides: 'no tides',
+  water: 'Water',
+  degrees: '{value} °C',
   waves: 'Waves',
   wind: 'Wind',
   sun: 'Sun',

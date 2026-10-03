@@ -8,6 +8,7 @@ const forecast: TideForecast = {
   hasTides: true,
   trend: 'rising',
   next: { time: Date.UTC(2026, 9, 3, 16, 45), type: 'high', height: 1.46 },
+  waterTemperature: 20.94,
   today: {
     date: '2026-10-03',
     events: [
@@ -45,6 +46,7 @@ describe('renderForecast', () => {
   });
 
   it('renders labelled conditions in local time', () => {
+    expect(html).toContain('\n\n🌡️ <b>Water:</b> 20.9 °C\n🏄 <b>Waves:</b>');
     expect(html).toContain('🏄 <b>Waves:</b> up to 1.8 m');
     expect(html).toContain('💨 <b>Wind:</b> up to 6.0 m/s');
     expect(html).toContain('☀️ <b>Sun:</b> 🌅 07:32 · 🌇 19:14');
@@ -74,6 +76,10 @@ describe('renderForecast', () => {
     expect(tideless).toContain('🏄 <b>Waves:</b> up to 1.8 m');
     expect(tideless).not.toContain('<blockquote');
     expect(tideless).not.toContain('<b>Now:</b>');
+  });
+
+  it('omits the water temperature when the model has none', () => {
+    expect(renderForecast({ ...forecast, waterTemperature: null }, { name: 'Bay' })).not.toContain('Water');
   });
 
   it('hides near-zero wave heights', () => {
