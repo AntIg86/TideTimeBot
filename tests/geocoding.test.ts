@@ -15,6 +15,6 @@ describe('shortenName', () => {
 
 describe('getCoordinates', () => {
   it('rejects overly long queries before calling Nominatim', async () => {
-    await expect(getCoordinates('x'.repeat(101), 'en')).rejects.toMatchObject({ key: 'queryTooLong' });
+    await expect(getCoordinates('x'.repeat(101))).rejects.toMatchObject({ key: 'queryTooLong' });
   });
 });

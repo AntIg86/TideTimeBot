@@ -4,17 +4,16 @@ import { UserError } from './errors';
 import { cityHandler, sharedLocationHandler } from './handlers/forecast';
 import { locationCommand } from './handlers/location';
 import { startCommand } from './handlers/start';
-import { resolveLocale, t } from './i18n';
+import { t } from './messages';
 
 async function handleError({ ctx, error }: BotError<Context>) {
-  const locale = resolveLocale(ctx.from?.language_code);
   let text: string;
   if (error instanceof UserError) {
-    text = t(locale, error.key, error.params);
+    text = t(error.key, error.params);
   } else {
     // Log the error only: the context holds the API client with the bot token.
     console.error(`Error while handling update ${ctx.update.update_id}:`, error);
-    text = t(locale, 'unexpectedError');
+    text = t('unexpectedError');
   }
 
   try {

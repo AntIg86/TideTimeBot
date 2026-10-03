@@ -1,6 +1,6 @@
 import type { Context } from 'grammy';
-import { resolveLocale, t } from '../i18n';
+import { t } from '../messages';
 
 export function startCommand(ctx: Context) {
-  return ctx.reply(t(resolveLocale(ctx.from?.language_code), 'welcome'));
+  return ctx.reply(t('welcome'));
 }
