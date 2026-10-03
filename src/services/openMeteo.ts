@@ -1,6 +1,6 @@
 import { UserError } from '../errors';
 import { distanceKm, ringPoints, type Point } from '../domain/geo';
-import type { DailyConditions, SeaLevelSeries } from '../domain/tides';
+import { dayKey, type DailyConditions, type SeaLevelSeries } from '../domain/tides';
 import { fetchJson } from './http';
 
 const MARINE_URL = 'https://marine-api.open-meteo.com/v1/marine';
@@ -29,6 +29,7 @@ interface MarineResponse {
 }
 
 interface WeatherResponse {
+  timezone: string;
   daily?: {
     time: number[];
     wind_speed_10m_max?: (number | null)[];
@@ -113,22 +114,24 @@ export async function fetchForecast(lat: number, lon: number): Promise<RawForeca
     ),
   ]);
 
-  // Both APIs use the same local-midnight timestamps for daily rows, so merge by time.
-  const daily = new Map<number, DailyConditions>();
-  const row = (time: number): DailyConditions => {
-    let entry = daily.get(time);
+  // Merge daily rows by local calendar date. Each API resolves `timezone=auto` for its own
+  // grid cell, so near a timezone border their midnight timestamps can differ.
+  const daily = new Map<string, DailyConditions>();
+  const row = (seconds: number, timezone: string): DailyConditions => {
+    const date = dayKey(seconds * 1000, timezone);
+    let entry = daily.get(date);
     if (!entry) {
-      entry = { time: time * 1000, waveMax: null, windMax: null, sunrise: null, sunset: null };
-      daily.set(time, entry);
+      entry = { date, waveMax: null, windMax: null, sunrise: null, sunset: null };
+      daily.set(date, entry);
     }
     return entry;
   };
 
   marine.daily?.time.forEach((time, i) => {
-    row(time).waveMax = marine.daily?.wave_height_max?.[i] ?? null;
+    row(time, marine.timezone).waveMax = marine.daily?.wave_height_max?.[i] ?? null;
   });
   weather.daily?.time.forEach((time, i) => {
-    const entry = row(time);
+    const entry = row(time, weather.timezone);
     entry.windMax = weather.daily?.wind_speed_10m_max?.[i] ?? null;
     entry.sunrise = toMs(weather.daily?.sunrise?.[i]);
     entry.sunset = toMs(weather.daily?.sunset?.[i]);

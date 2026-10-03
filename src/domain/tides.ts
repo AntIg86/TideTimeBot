@@ -19,8 +19,8 @@ export interface SeaLevelSeries {
 }
 
 export interface DailyConditions {
-  /** Local midnight of the day. */
-  time: number;
+  /** Local calendar date, YYYY-MM-DD. */
+  date: string;
   waveMax: number | null;
   windMax: number | null;
   sunrise: number | null;
@@ -151,7 +151,7 @@ export function buildForecast(input: {
   const tidesOn = (date: string): DayTides => ({ date, events: byDay.get(date) ?? [] });
 
   const today = dayKey(now, timezone);
-  const conditions = input.daily.find((day) => dayKey(day.time, timezone) === today) ?? null;
+  const conditions = input.daily.find((day) => day.date === today) ?? null;
 
   const next = events.find((event) => event.time > now) ?? null;
   const last = events.filter((event) => event.time <= now).at(-1);

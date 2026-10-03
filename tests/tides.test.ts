@@ -90,7 +90,7 @@ describe('buildForecast', () => {
   const start = Date.UTC(2026, 9, 21, 0, 0);
   const seaLevel = syntheticTide(start, 24 * 10, start + 3 * HOUR);
   const now = Date.UTC(2026, 9, 22, 10, 0);
-  const daily = [{ time: Date.UTC(2026, 9, 21, 23, 0), waveMax: 1.2, windMax: 4.5, sunrise: null, sunset: null }];
+  const daily = [{ date: '2026-10-22', waveMax: 1.2, windMax: 4.5, sunrise: null, sunset: null }];
   const forecast = buildForecast({ seaLevel, daily, timezone, now, days: 7 });
 
   it('returns today and seven upcoming calendar days through the DST change', () => {
