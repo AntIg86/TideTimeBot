@@ -54,7 +54,7 @@ describe('renderForecast', () => {
 
   it("puts today's tides in a quote", () => {
     expect(html).toContain('📅 <b>Today, Sat, Oct 3</b>');
-    expect(html).toContain('<blockquote>• <b>05:12</b>  🌊 high tide · <i>+1.4 m</i>\n• <b>11:30</b>  🏖️ low tide · <i>−1.2 m</i>');
+    expect(html).toContain('<blockquote>• <b>05:12</b>  🌊 high tide · +1.4 m\n• <b>11:30</b>  🏖️ low tide · −1.2 m');
   });
 
   it('puts the upcoming days in an expandable quote', () => {

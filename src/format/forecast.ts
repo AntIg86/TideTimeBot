@@ -114,7 +114,7 @@ function renderSchedule(forecast: TideForecast, time: (value: number) => string)
   lines.push(`📅 <b>${t('today')}, ${todayLabel}</b>`);
   const todayRows = today.events.map(
     (event) =>
-      `• <b>${time(event.time)}</b>  ${TIDE_ICON[event.type]} ${t(event.type)} · <i>${formatHeight(event.height)}</i>`,
+      `• <b>${time(event.time)}</b>  ${TIDE_ICON[event.type]} ${t(event.type)} · ${formatHeight(event.height)}`,
   );
   lines.push(`<blockquote>${todayRows.length ? todayRows.join('\n') : `<i>${t('noTides')}</i>`}</blockquote>`);
 
