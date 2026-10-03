@@ -1,88 +1,108 @@
 # Tide Time Bot 🌊
 
-A Telegram bot that provides real-time tide forecasts, wave heights, wind speeds, and sunrise/sunset times for any coastal location using the Open-Meteo and OpenStreetMap APIs.
+A Telegram bot that shows tide times for any coastal location: a detailed view for today (current trend, next tide, heights, waves, wind, sunrise/sunset) plus high/low tide times for the next 7 days. Data comes from Open-Meteo and OpenStreetMap Nominatim.
 
 ## Features
 
-- **Tide Forecasts**: Daily high and low tide times.
-- **Current Status**: Indicates if the tide is currently rising or falling.
-- **Marine Conditions**: Maximum wave height and wind speed for the day.
-- **Sun Cycle**: Sunrise and sunset times.
-- **Global Coverage**: Search for any coastal city worldwide.
-- **Geocoding**: Converts city names to coordinates automatically.
+- **Today in detail**: high/low tide times with heights, rising/falling trend and the next tide.
+- **7-day outlook**: high and low tide times for each of the next 7 days.
+- **Marine conditions**: today's maximum wave height and wind speed, sunrise and sunset.
+- **City search or shared location**: send a city name or a location pin 📍.
+- **Russian and English**: picked automatically from the user's Telegram language.
+- **Correct local time**: times are computed from UTC timestamps and the place's IANA timezone, so DST changes inside the forecast window are handled.
 
 ## Prerequisites
 
-- Node.js (v18 or higher recommended)
-- [pnpm](https://pnpm.io/) (or npm/yarn)
-- A Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
+- Node.js 20+ (22+ recommended)
+- [pnpm](https://pnpm.io/)
+- A Telegram Bot Token from [@BotFather](https://t.me/BotFather)
 
-## Installation
-
-1.  **Clone the repository:**
-
-    ```bash
-    git clone <repository-url>
-    cd TideTimeBot
-    ```
-
-2.  **Install dependencies:**
-
-    ```bash
-    pnpm install
-    ```
-
-3.  **Configure Environment Variables:**
-
-    Create a `.env` file in the root directory:
-
-    ```bash
-    cp .env.example .env  # If .env.example exists, otherwise create new
-    ```
-
-    Add your Telegram Bot Token:
-
-    ```env
-    BOT_TOKEN=your_telegram_bot_token_here
-    PORT=3000 # Optional, defaults to 3000
-    ```
-
-## Running the Bot
-
-### Development Mode
-Runs the bot with `ts-node` for hot-reloading (if configured) or direct TypeScript execution.
+## Setup
 
 ```bash
-pnpm run dev
+git clone <repository-url>
+cd TideTimeBot
+pnpm install
+cp .env.example .env   # then fill in BOT_TOKEN
 ```
 
-### Production Mode
-Compiles TypeScript to JavaScript and runs the built files.
+| Variable          | Required | Description                                                                 |
+| ----------------- | -------- | --------------------------------------------------------------------------- |
+| `BOT_TOKEN`       | yes      | Telegram bot token                                                          |
+| `PORT`            | no       | Port of the webhook server (default `3000`)                                 |
+| `WEBHOOK_SECRET`  | no       | Secret checked against `X-Telegram-Bot-Api-Secret-Token`                     |
+| `NOMINATIM_EMAIL` | no       | Contact sent to Nominatim in `User-Agent` (recommended by their usage policy) |
+
+## Running
+
+### Local development (long polling)
 
 ```bash
-pnpm run build
-pnpm start
+pnpm dev
 ```
+
+Long polling **removes the webhook** registered for the token. Use a separate test bot, or register the webhook again afterwards (see below).
+
+### Docker / Render (webhook server)
+
+`src/server.ts` starts an HTTP server: `POST` requests are Telegram updates, any other request returns `200 ok` for health checks.
+
+```bash
+docker build -t tide-time-bot .
+docker run -p 3000:3000 --env-file .env tide-time-bot
+```
+
+`render.yaml` deploys the same image to Render.
+
+### Vercel (serverless webhook)
+
+`api/index.ts` is the webhook function; `vercel.json` routes all requests to it. Set `BOT_TOKEN` (and optionally `WEBHOOK_SECRET`) in the project's environment variables.
+
+### Registering the webhook
+
+After deploying to Docker/Render or Vercel, point Telegram at your URL:
+
+```bash
+curl "https://api.telegram.org/bot$BOT_TOKEN/setWebhook?url=https://your-app.example.com/&secret_token=$WEBHOOK_SECRET"
+```
+
+## Scripts
+
+| Command              | Description                                  |
+| -------------------- | -------------------------------------------- |
+| `pnpm dev`           | Long polling with auto-reload (`tsx watch`)  |
+| `pnpm build`         | Compile TypeScript to `dist/`                |
+| `pnpm start`         | Run the webhook server (`dist/server.js`)    |
+| `pnpm start:polling` | Run long polling from the build              |
+| `pnpm typecheck`     | Type-check without emitting                  |
+| `pnpm test`          | Run unit tests (Vitest)                      |
 
 ## Usage
 
-1.  Start the bot in Telegram.
-2.  Send `/start` to see the welcome message.
-3.  **Search for Tides**: Simply type the name of a city (e.g., "Lisbon", "San Francisco").
-    *   The bot will reply with the current tide status, next tide, and today's schedule.
-4.  **Test Geocoding**: Use `/location <city>` to see the raw coordinates found for a location.
+1. Send `/start` (or `/help`).
+2. Send a city name, e.g. `Lisbon`, or share a location.
+3. `/location <city>` shows the place and coordinates the geocoder found.
 
-## APIs Used
+## How tides are computed
 
--   **[Open-Meteo Marine API](https://open-meteo.com/en/docs/marine-weather-api)**: For tide, wave, and weather data.
--   **[OpenStreetMap Nominatim](https://nominatim.org/)**: For geocoding city names to coordinates.
+Open-Meteo provides hourly `sea_level_height_msl`. High and low tides are local maxima/minima of this series, refined with a parabola through the three neighbouring samples to get minute-level times and heights. Heights are relative to mean sea level, not to chart datum, so they differ from official port tide tables. Treat the data as guidance, not for navigation.
 
-## Project Structure
+## Project structure
 
--   `src/bot.ts`: Main entry point and bot logic.
--   `src/services/`: API integration logic (Tides and Geocoding).
--   `src/commands/`: Command handlers.
--   `src/config.ts`: Configuration and environment variable validation.
+```
+api/index.ts              Vercel webhook function
+src/bot.ts                Bot setup, handlers, error handling
+src/polling.ts            Long-polling entry point (dev)
+src/server.ts             Webhook HTTP server (Docker/Render)
+src/config.ts             Environment variables
+src/i18n.ts               Russian/English messages
+src/errors.ts             User-facing errors
+src/handlers/             Telegram command and message handlers
+src/services/             Nominatim and Open-Meteo clients
+src/domain/tides.ts       Tide extremes and forecast assembly (pure)
+src/format/forecast.ts    Telegram HTML rendering (pure)
+tests/                    Vitest unit tests
+```
 
 ## License
 

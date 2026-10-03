@@ -4,8 +4,13 @@ services:
     env: docker
     region: frankfurt
     plan: free
+    healthCheckPath: /
     envVars:
       - key: BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
+      - key: NOMINATIM_EMAIL
         sync: false
       - key: PORT
         value: 3000

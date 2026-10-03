@@ -1,77 +1,114 @@
-import axios from 'axios';
-import fs from 'fs-extra';
-import path from 'path';
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { config } from '../config';
+import { UserError } from '../errors';
+import type { Locale } from '../i18n';
+import { fetchJson } from './http';
 
-const CACHE_FILE = path.join(process.cwd(), 'cities_cache.json');
+// Vercel only allows writing to /tmp; locally keep the cache next to the project.
+const CACHE_FILE = process.env.VERCEL
+  ? '/tmp/cities_cache.json'
+  : path.join(process.cwd(), 'cities_cache.json');
 
-interface Coordinates {
+const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
+const USER_AGENT = `TideTimeBot/1.1${config.nominatimEmail ? ` (${config.nominatimEmail})` : ''}`;
+
+export interface Place {
   lat: number;
   lon: number;
+  /** Full Nominatim display name. */
   displayName: string;
+  /** Short "City, Country" label for messages. */
+  shortName: string;
 }
 
-interface Cache {
-  [key: string]: Coordinates;
+interface NominatimPlace {
+  lat: string;
+  lon: string;
+  display_name: string;
 }
 
-async function loadCache(): Promise<Cache> {
+let cache: Map<string, Place> | null = null;
+let pendingSave: Promise<void> = Promise.resolve();
+
+async function getCache(): Promise<Map<string, Place>> {
+  if (!cache) {
+    try {
+      const raw = JSON.parse(await readFile(CACHE_FILE, 'utf8')) as Record<string, Place>;
+      // Entries written by older versions have no shortName; drop them.
+      cache = new Map(Object.entries(raw).filter(([, place]) => place.shortName));
+    } catch {
+      cache = new Map();
+    }
+  }
+  return cache;
+}
+
+function saveCache(entries: Map<string, Place>): void {
+  // Serialize writes so concurrent lookups don't interleave partial files.
+  pendingSave = pendingSave
+    .then(() => writeFile(CACHE_FILE, JSON.stringify(Object.fromEntries(entries), null, 2)))
+    .catch((error) => console.error('Error saving geocoding cache:', error));
+}
+
+export function shortenName(displayName: string): string {
+  const parts = displayName.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 2) return parts.join(', ');
+  return `${parts[0]}, ${parts[parts.length - 1]}`;
+}
+
+function toPlace(result: NominatimPlace): Place {
+  return {
+    lat: Number(result.lat),
+    lon: Number(result.lon),
+    displayName: result.display_name,
+    shortName: shortenName(result.display_name),
+  };
+}
+
+function nominatimRequest(endpoint: string, params: Record<string, string>, locale: Locale) {
+  const url = new URL(endpoint, NOMINATIM_URL);
+  url.search = new URLSearchParams({ ...params, format: 'json', 'accept-language': locale }).toString();
+  return url;
+}
+
+export async function getCoordinates(city: string, locale: Locale): Promise<Place> {
+  const query = city.trim();
+  const key = `${locale}:${query.toLowerCase()}`;
+  const entries = await getCache();
+
+  const cached = entries.get(key);
+  if (cached) return cached;
+
+  const results = await fetchJson<NominatimPlace[]>(
+    nominatimRequest('/search', { q: query, limit: '1' }, locale),
+    { headers: { 'User-Agent': USER_AGENT } },
+  );
+
+  const [first] = results;
+  if (!first) {
+    throw new UserError('cityNotFound', { city: query });
+  }
+
+  const place = toPlace(first);
+  entries.set(key, place);
+  saveCache(entries);
+  return place;
+}
+
+/** Names a point the user shared; falls back to raw coordinates if Nominatim fails. */
+export async function reverseGeocode(lat: number, lon: number, locale: Locale): Promise<Place> {
+  const fallback = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   try {
-    if (await fs.pathExists(CACHE_FILE)) {
-      return await fs.readJson(CACHE_FILE);
+    const result = await fetchJson<NominatimPlace | { error: string }>(
+      nominatimRequest('/reverse', { lat: String(lat), lon: String(lon), zoom: '10' }, locale),
+      { headers: { 'User-Agent': USER_AGENT } },
+    );
+    if ('display_name' in result) {
+      return { ...toPlace(result), lat, lon };
     }
   } catch (error) {
-    console.error('Error loading cache:', error);
+    console.error('Reverse geocoding failed:', error);
   }
-  return {};
-}
-
-async function saveCache(cache: Cache): Promise<void> {
-  try {
-    await fs.writeJson(CACHE_FILE, cache, { spaces: 2 });
-  } catch (error) {
-    console.error('Error saving cache:', error);
-  }
-}
-
-export async function getCoordinates(city: string): Promise<Coordinates> {
-  const normalizedCity = city.trim().toLowerCase();
-  const cache = await loadCache();
-
-  if (cache[normalizedCity]) {
-    return cache[normalizedCity];
-  }
-
-  try {
-    const response = await axios.get('https://nominatim.openstreetmap.org/search', {
-      params: {
-        q: city,
-        format: 'json',
-        limit: 1,
-      },
-      headers: {
-        'User-Agent': 'TideTimeBot/1.0',
-      },
-    });
-
-    if (response.data && response.data.length > 0) {
-      const result = response.data[0];
-      const coordinates: Coordinates = {
-        lat: parseFloat(result.lat),
-        lon: parseFloat(result.lon),
-        displayName: result.display_name,
-      };
-
-      cache[normalizedCity] = coordinates;
-      await saveCache(cache);
-
-      return coordinates;
-    } else {
-      throw new Error(`City "${city}" not found.`);
-    }
-  } catch (error: any) {
-    if (axios.isAxiosError(error)) {
-      throw new Error(`Geocoding API error: ${error.message}`);
-    }
-    throw error;
-  }
+  return { lat, lon, displayName: fallback, shortName: fallback };
 }

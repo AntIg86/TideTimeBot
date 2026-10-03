@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+.env.*
+.git
+cities_cache.json
+tests
