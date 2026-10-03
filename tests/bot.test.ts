@@ -24,8 +24,8 @@ function botWithRecordedCalls() {
   return { bot, calls };
 }
 
-function textUpdate(text: string, languageCode = 'ru') {
-  const from = { id: 1, is_bot: false, first_name: 'User', language_code: languageCode };
+function textUpdate(text: string) {
+  const from = { id: 1, is_bot: false, first_name: 'User' };
   return {
     update_id: 1,
     message: { message_id: 1, date: 0, chat: { id: 1, type: 'private' as const, first_name: 'User' }, from, text },
@@ -38,6 +38,6 @@ describe('bot error handling', () => {
     await expect(bot.handleUpdate(textUpdate('x'.repeat(150)))).resolves.toBeUndefined();
 
     const reply = calls.find((call) => call.method === 'sendMessage');
-    expect(reply?.payload.text).toBe('❌ Слишком длинное название. Отправь название города покороче.');
+    expect(reply?.payload.text).toBe('❌ The name is too long. Please send a shorter city name.');
   });
 });

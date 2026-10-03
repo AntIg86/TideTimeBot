@@ -47,6 +47,26 @@ describe('findTideExtremes', () => {
     expect(result.every((event) => event.time > series.times[12])).toBe(true);
   });
 
+  it('ignores centimetre wiggles below the minimum swing', () => {
+    const times = Array.from({ length: 12 }, (_, i) => i * HOUR);
+    const heights = [-0.6, -0.59, -0.6, -0.61, -0.6, -0.59, -0.6, -0.6, -0.61, -0.6, -0.59, -0.6];
+    expect(findTideExtremes({ times, heights })).toEqual([]);
+  });
+
+  it('keeps a real tide that has small noise on top', () => {
+    const series = syntheticTide(start, 48, firstHigh);
+    const noisy = series.heights.map((height, i) => height! + (i % 2 ? 0.02 : -0.02));
+    const result = findTideExtremes({ times: series.times, heights: noisy });
+    expect(result.length).toBe(events.length);
+    result.forEach((event, i) => expect(Math.abs(event.time - events[i].time)).toBeLessThan(45 * 60_000));
+  });
+
+  it('puts a flat top of three equal samples at its centre', () => {
+    const times = Array.from({ length: 7 }, (_, i) => i * HOUR);
+    const [high] = findTideExtremes({ times, heights: [0, 0.5, 1, 1, 1, 0.5, 0] });
+    expect(high).toEqual({ time: 3 * HOUR, type: 'high', height: 1 });
+  });
+
   it('returns nothing for an all-null series', () => {
     expect(findTideExtremes({ times: [0, HOUR, 2 * HOUR], heights: [null, null, null] })).toEqual([]);
   });
@@ -95,6 +115,20 @@ describe('buildForecast', () => {
 
   it('picks daily conditions for the local today', () => {
     expect(forecast.today.conditions?.waveMax).toBe(1.2);
+  });
+
+  it('reports tides for a regular semi-diurnal signal', () => {
+    expect(forecast.hasTides).toBe(true);
+  });
+
+  it('treats a slow wind-driven drift as no tides', () => {
+    // One 20 cm swell over ten days: extremes exist, but far fewer than one a day.
+    const drift = {
+      times: seaLevel.times,
+      heights: seaLevel.times.map((time) => Math.round(0.1 * Math.sin((2 * Math.PI * (time - start)) / (5 * 24 * HOUR)) * 100) / 100),
+    };
+    const result = buildForecast({ seaLevel: drift, daily, timezone, now, days: 7 });
+    expect(result.hasTides).toBe(false);
   });
 
   it('falls back to the last past event when no future one exists', () => {

@@ -5,6 +5,7 @@ import { escapeHtml, renderForecast } from '../src/format/forecast';
 const timezone = 'Europe/Lisbon';
 const forecast: TideForecast = {
   timezone,
+  hasTides: true,
   trend: 'rising',
   next: { time: Date.UTC(2026, 9, 3, 16, 45), type: 'high', height: 1.46 },
   today: {
@@ -35,29 +36,52 @@ describe('escapeHtml', () => {
 });
 
 describe('renderForecast', () => {
-  it('renders an English forecast in local time', () => {
-    const html = renderForecast(forecast, 'Lisbon, Portugal', 'en');
-    expect(html).toContain('🌊 <b>Tide forecast</b> · Lisbon, Portugal');
-    expect(html).toContain('📈 Now: rising');
-    expect(html).toContain('🔜 Next: 🌊 high tide at <b>17:45</b>');
-    expect(html).toContain('🌊 <b>05:12</b>  high tide · +1.4 m');
-    expect(html).toContain('🏖️ <b>11:30</b>  low tide · −1.2 m');
-    expect(html).toContain('🏄 waves up to 1.8 m · 💨 wind up to 6.0 m/s');
-    expect(html).toContain('🌅 07:32 · 🌇 19:14');
-    // 23:40 UTC on the 3rd is 00:40 on the 4th in Lisbon.
-    expect(html).toContain('<b>Sun 4</b>  🏖️ 00:40');
-    expect(html).toContain('<b>Mon 5</b>  —');
+  const html = renderForecast(forecast, { name: 'Lisbon, Portugal' });
+
+  it('renders the header and current state', () => {
+    expect(html).toContain('🌊 <b>Tide forecast</b>\n📍 <b>Lisbon, Portugal</b>\n──────────────────');
+    expect(html).toContain('📈 <b>Now:</b> rising');
+    expect(html).toContain('🔜 <b>Next:</b> 🌊 high tide at <b>17:45</b>');
   });
 
-  it('renders a Russian forecast', () => {
-    const html = renderForecast(forecast, 'Лиссабон, Португалия', 'ru');
-    expect(html).toContain('📈 Сейчас: прилив');
-    expect(html).toContain('🌊 <b>05:12</b>  полная вода · +1,4 м');
-    expect(html).toContain('🗓 <b>Следующие дни</b>');
-    expect(html).toContain('<b>Вс 4</b>  🏖️ 00:40');
+  it('renders labelled conditions in local time', () => {
+    expect(html).toContain('🏄 <b>Waves:</b> up to 1.8 m');
+    expect(html).toContain('💨 <b>Wind:</b> up to 6.0 m/s');
+    expect(html).toContain('☀️ <b>Sun:</b> 🌅 07:32 · 🌇 19:14');
+  });
+
+  it("puts today's tides in a quote", () => {
+    expect(html).toContain('📅 <b>Today, Sat, Oct 3</b>');
+    expect(html).toContain('<blockquote>• <b>05:12</b>  🌊 high tide · <i>+1.4 m</i>\n• <b>11:30</b>  🏖️ low tide · <i>−1.2 m</i>');
+  });
+
+  it('puts the upcoming days in an expandable quote', () => {
+    expect(html).toContain('🗓 <b>Next 2 days</b>');
+    // 23:40 UTC on the 3rd is 00:40 on the 4th in Lisbon.
+    expect(html).toContain('<blockquote expandable><b>Sun 4</b>  🏖️ 00:40\n<b>Mon 5</b>  —</blockquote>');
+  });
+
+  it('mentions the sea point only when tides come from elsewhere', () => {
+    expect(html).not.toContain('🧭');
+    expect(renderForecast(forecast, { name: 'Murmansk', seaPointKm: 54.6 })).toContain(
+      '<i>🧭 tides for the nearest sea point, 55 km away</i>',
+    );
+  });
+
+  it('replaces the schedule with a note when the sea is nearly tideless', () => {
+    const tideless = renderForecast({ ...forecast, hasTides: false, trend: null, next: null }, { name: 'Sochi, Russia' });
+    expect(tideless).toContain('〰️ Tides here are negligible: the sea level only drifts with wind and pressure.');
+    expect(tideless).toContain('🏄 <b>Waves:</b> up to 1.8 m');
+    expect(tideless).not.toContain('<blockquote');
+    expect(tideless).not.toContain('<b>Now:</b>');
+  });
+
+  it('hides near-zero wave heights', () => {
+    const calm = { ...forecast.today.conditions!, waveMax: 0.02 };
+    expect(renderForecast({ ...forecast, today: { ...forecast.today, conditions: calm } }, { name: 'Bay' })).not.toContain('Waves');
   });
 
   it('escapes the place name', () => {
-    expect(renderForecast(forecast, 'A<b>&', 'en')).toContain('· A&lt;b&gt;&amp;');
+    expect(renderForecast(forecast, { name: 'A<b>&' })).toContain('📍 <b>A&lt;b&gt;&amp;</b>');
   });
 });

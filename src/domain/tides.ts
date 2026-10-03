@@ -1,5 +1,7 @@
 /** All timestamps are epoch milliseconds; local dates are derived via the IANA timezone. */
 
+const DAY_MS = 24 * 3600_000;
+
 export type TideType = 'high' | 'low';
 export type TideTrend = 'rising' | 'falling';
 
@@ -33,6 +35,8 @@ export interface DayTides {
 
 export interface TideForecast {
   timezone: string;
+  /** False for nearly tideless seas, where the level only drifts with wind and pressure. */
+  hasTides: boolean;
   trend: TideTrend | null;
   next: TideEvent | null;
   today: DayTides & { conditions: DailyConditions | null };
@@ -69,24 +73,61 @@ function fitParabola(y1: number, y2: number, y3: number): { offset: number; valu
   return { offset: -b / (2 * a), value: y2 - (b * b) / (4 * a) };
 }
 
-/** Finds high and low tides as local extrema of the sea level, refined by quadratic interpolation. */
-export function findTideExtremes({ times, heights }: SeaLevelSeries): TideEvent[] {
+/**
+ * Minimum rise or fall (metres) that confirms a high or low. Filters centimetre rounding
+ * noise, and leaves nearly tideless seas (Black Sea, Baltic) without events.
+ */
+const MIN_TIDE_SWING = 0.1;
+
+/**
+ * Refines a sampled extremum: the vertex of a parabola through it and its neighbours,
+ * or the centre of a flat top of three or more equal samples.
+ */
+function refineExtremum({ times, heights }: SeaLevelSeries, i: number, type: TideType): TideEvent {
+  const value = heights[i]!;
+  let end = i;
+  while (heights[end + 1] === value) end++;
+  if (end > i + 1) {
+    return { time: Math.round((times[i] + times[end]) / 2), type, height: value };
+  }
+
+  const prev = heights[i - 1]!;
+  const next = heights[i + 1]!;
+  const { offset, value: vertex } = fitParabola(prev, value, next);
+  return { time: Math.round(times[i] + offset * (times[i + 1] - times[i])), type, height: vertex };
+}
+
+/**
+ * Finds high and low tides with a zigzag filter: an extremum counts only once the sea level
+ * has moved away from it by at least MIN_TIDE_SWING. Times and heights are then refined.
+ */
+export function findTideExtremes(series: SeaLevelSeries, minSwing = MIN_TIDE_SWING): TideEvent[] {
+  const { heights } = series;
   const events: TideEvent[] = [];
+  let direction: 'up' | 'down' | null = null;
+  let highIdx = -1;
+  let lowIdx = -1;
 
-  for (let i = 1; i < heights.length - 1; i++) {
-    const prev = heights[i - 1];
-    const curr = heights[i];
-    const next = heights[i + 1];
-    if (prev === null || curr === null || next === null) continue;
+  const confirm = (i: number, type: TideType) => {
+    // An extremum next to the edge of the data (or a gap) is just where the series starts or ends.
+    if (heights[i - 1] != null && heights[i + 1] != null) events.push(refineExtremum(series, i, type));
+  };
 
-    let type: TideType | null = null;
-    if (curr > prev && curr >= next) type = 'high';
-    else if (curr < prev && curr <= next) type = 'low';
-    if (!type) continue;
+  for (let i = 0; i < heights.length; i++) {
+    const height = heights[i];
+    if (height === null) continue;
+    if (highIdx < 0 || height > heights[highIdx]!) highIdx = i;
+    if (lowIdx < 0 || height < heights[lowIdx]!) lowIdx = i;
 
-    const step = times[i + 1] - times[i];
-    const { offset, value } = fitParabola(prev, curr, next);
-    events.push({ time: Math.round(times[i] + offset * step), type, height: value });
+    if (direction !== 'down' && heights[highIdx]! - height >= minSwing) {
+      confirm(highIdx, 'high');
+      direction = 'down';
+      lowIdx = i;
+    } else if (direction !== 'up' && height - heights[lowIdx]! >= minSwing) {
+      confirm(lowIdx, 'low');
+      direction = 'up';
+      highIdx = i;
+    }
   }
 
   return events;
@@ -118,8 +159,15 @@ export function buildForecast(input: {
   if (next) trend = next.type === 'high' ? 'rising' : 'falling';
   else if (last) trend = last.type === 'high' ? 'falling' : 'rising';
 
+  // Real tides give at least one high or low a day (usually four); wind-driven drift in
+  // nearly tideless seas (Black Sea, Baltic) gives a few extremes per week.
+  const { times } = input.seaLevel;
+  const spanDays = times.length > 1 ? (times[times.length - 1] - times[0]) / DAY_MS : 0;
+  const hasTides = events.length > 0 && events.length >= spanDays;
+
   return {
     timezone,
+    hasTides,
     trend,
     next,
     today: { ...tidesOn(today), conditions },

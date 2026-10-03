@@ -2,7 +2,6 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config';
 import { UserError } from '../errors';
-import type { Locale } from '../i18n';
 import { fetchJson } from './http';
 
 // Vercel only allows writing to /tmp; locally keep the cache next to the project.
@@ -67,26 +66,26 @@ function toPlace(result: NominatimPlace): Place {
   };
 }
 
-function nominatimRequest(endpoint: string, params: Record<string, string>, locale: Locale) {
+function nominatimRequest(endpoint: string, params: Record<string, string>) {
   const url = new URL(endpoint, NOMINATIM_URL);
-  url.search = new URLSearchParams({ ...params, format: 'json', 'accept-language': locale }).toString();
+  url.search = new URLSearchParams({ ...params, format: 'json', 'accept-language': 'en' }).toString();
   return url;
 }
 
-export async function getCoordinates(city: string, locale: Locale): Promise<Place> {
+export async function getCoordinates(city: string): Promise<Place> {
   const query = city.trim();
   if (query.length > MAX_QUERY_LENGTH) {
     throw new UserError('queryTooLong');
   }
 
-  const key = `${locale}:${query.toLowerCase()}`;
+  const key = query.toLowerCase();
   const entries = await getCache();
 
   const cached = entries.get(key);
   if (cached) return cached;
 
   const results = await fetchJson<NominatimPlace[]>(
-    nominatimRequest('/search', { q: query, limit: '1' }, locale),
+    nominatimRequest('/search', { q: query, limit: '1' }),
     { headers: { 'User-Agent': USER_AGENT } },
   );
 
@@ -102,11 +101,11 @@ export async function getCoordinates(city: string, locale: Locale): Promise<Plac
 }
 
 /** Names a point the user shared; falls back to raw coordinates if Nominatim fails. */
-export async function reverseGeocode(lat: number, lon: number, locale: Locale): Promise<Place> {
+export async function reverseGeocode(lat: number, lon: number): Promise<Place> {
   const fallback = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   try {
     const result = await fetchJson<NominatimPlace | { error: string }>(
-      nominatimRequest('/reverse', { lat: String(lat), lon: String(lon), zoom: '10' }, locale),
+      nominatimRequest('/reverse', { lat: String(lat), lon: String(lon), zoom: '10' }),
       { headers: { 'User-Agent': USER_AGENT } },
     );
     if ('display_name' in result) {

@@ -1,82 +1,129 @@
 import { dayKey, type TideEvent, type TideForecast, type TideType } from '../domain/tides';
-import { t, type Locale } from '../i18n';
+import { t, type MessageKey } from '../messages';
+
+const LOCALE = 'en';
 
 const TIDE_ICON: Record<TideType, string> = { high: '🌊', low: '🏖️' };
+const DIVIDER = '──────────────────';
+
+export interface PlaceLabel {
+  name: string;
+  /** Distance to the sea point the tides come from, when it is not the place itself. */
+  seaPointKm?: number;
+}
 
 export function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+/** Intl formatters are expensive to build; reuse them per options. */
+const formatters = new Map<string, Intl.DateTimeFormat | Intl.NumberFormat>();
+function memo<T extends Intl.DateTimeFormat | Intl.NumberFormat>(key: string, create: () => T): T {
+  let formatter = formatters.get(key) as T | undefined;
+  if (!formatter) {
+    formatter = create();
+    formatters.set(key, formatter);
+  }
+  return formatter;
+}
 
-function formatTime(time: number, locale: Locale, timeZone: string): string {
-  return new Intl.DateTimeFormat(locale, { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(time);
+function formatTime(time: number, timeZone: string): string {
+  return memo(`time|${timeZone}`, () =>
+    new Intl.DateTimeFormat(LOCALE, { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }),
+  ).format(time);
 }
 
 /** Formats a YYYY-MM-DD key; noon UTC keeps the calendar date stable in any formatter. */
-function formatDate(date: string, locale: Locale, options: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
+function formatDate(date: string, options: Intl.DateTimeFormatOptions): string {
+  return memo(`date|${JSON.stringify(options)}`, () =>
+    new Intl.DateTimeFormat(LOCALE, { ...options, timeZone: 'UTC' }),
+  ).format(new Date(`${date}T12:00:00Z`));
 }
 
-function formatHeight(height: number, locale: Locale): string {
+function formatNumber(value: number): string {
+  return memo('number', () =>
+    new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+  ).format(value);
+}
+
+function formatHeight(height: number): string {
   const rounded = Math.round(height * 10) / 10;
   const sign = rounded < 0 ? '−' : '+';
-  return `${sign}${formatNumber(Math.abs(rounded), locale)} ${t(locale, 'meters')}`;
+  return `${sign}${formatNumber(Math.abs(rounded))} ${t('meters')}`;
 }
 
-function formatNumber(value: number, locale: Locale): string {
-  return new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
-}
-
-export function renderForecast(forecast: TideForecast, placeName: string, locale: Locale): string {
+export function renderForecast(forecast: TideForecast, place: PlaceLabel): string {
   const { timezone: tz, today } = forecast;
-  const time = (value: number) => formatTime(value, locale, tz);
+  const time = (value: number) => formatTime(value, tz);
+  const label = (key: MessageKey) => `<b>${t(key)}:</b>`;
   const lines: string[] = [];
 
-  lines.push(`🌊 <b>${t(locale, 'title')}</b> · ${escapeHtml(placeName)}`, '');
-
-  const trendIcon = forecast.trend === 'falling' ? '📉' : '📈';
-  lines.push(`${trendIcon} ${t(locale, 'now')}: ${t(locale, forecast.trend ?? 'unknown')}`);
-  if (forecast.next) {
-    const { next } = forecast;
-    const nextDay = dayKey(next.time, tz);
-    const dayNote = nextDay === today.date ? '' : ` (${formatDate(nextDay, locale, { weekday: 'short' })})`;
-    lines.push(
-      `🔜 ${t(locale, 'next')}: ${TIDE_ICON[next.type]} ${t(locale, next.type)} ${t(locale, 'at')} <b>${time(next.time)}</b>${dayNote}`,
-    );
+  // Header
+  lines.push(`🌊 <b>${t('title')}</b>`, `📍 <b>${escapeHtml(place.name)}</b>`);
+  if (place.seaPointKm !== undefined) {
+    lines.push(`<i>🧭 ${t('seaPoint', { km: Math.round(place.seaPointKm) })}</i>`);
   }
-  lines.push('');
+  lines.push(DIVIDER);
 
-  const todayLabel = formatDate(today.date, locale, { weekday: 'short', day: 'numeric', month: 'short' });
-  lines.push(`📅 <b>${t(locale, 'today')}, ${todayLabel}</b>`);
-  if (today.events.length === 0) {
-    lines.push(`<i>${t(locale, 'noTides')}</i>`);
-  }
-  for (const event of today.events) {
-    lines.push(`${TIDE_ICON[event.type]} <b>${time(event.time)}</b>  ${t(locale, event.type)} · ${formatHeight(event.height, locale)}`);
-  }
-
-  const conditions = today.conditions;
-  if (conditions) {
-    const extras: string[] = [];
-    if (conditions.waveMax !== null) extras.push(`🏄 ${t(locale, 'waves', { value: formatNumber(conditions.waveMax, locale) })}`);
-    if (conditions.windMax !== null) extras.push(`💨 ${t(locale, 'wind', { value: formatNumber(conditions.windMax, locale) })}`);
-    if (extras.length) lines.push(extras.join(' · '));
-    if (conditions.sunrise !== null && conditions.sunset !== null) {
-      lines.push(`🌅 ${time(conditions.sunrise)} · 🌇 ${time(conditions.sunset)}`);
+  // Right now
+  if (!forecast.hasTides) {
+    lines.push(`〰️ ${t('negligibleTides')}`);
+  } else {
+    const trendIcon = forecast.trend === 'falling' ? '📉' : '📈';
+    lines.push(`${trendIcon} ${label('now')} ${t(forecast.trend ?? 'unknown')}`);
+    if (forecast.next) {
+      const { next } = forecast;
+      const nextDay = dayKey(next.time, tz);
+      const dayNote = nextDay === today.date ? '' : ` (${formatDate(nextDay, { weekday: 'short' })})`;
+      lines.push(`🔜 ${label('next')} ${TIDE_ICON[next.type]} ${t(next.type)} ${t('at')} <b>${time(next.time)}</b>${dayNote}`);
     }
   }
-  lines.push('');
 
-  lines.push(`🗓 <b>${t(locale, 'upcoming')}</b>`);
-  for (const day of forecast.upcoming) {
-    // Built by hand: Intl orders weekday/day differently per locale ("4 Sun").
-    const label = `${capitalize(formatDate(day.date, locale, { weekday: 'short' }))} ${Number(day.date.slice(8))}`;
-    lines.push(`<b>${label}</b>  ${renderCompact(day.events, time)}`);
+  // Today's conditions
+  const conditions = today.conditions;
+  if (conditions) {
+    const details: string[] = [];
+    // ~0 m waves usually means a sheltered bay or river the wave model does not cover.
+    if (conditions.waveMax !== null && conditions.waveMax >= 0.05) {
+      details.push(`🏄 ${label('waves')} ${t('upToMeters', { value: formatNumber(conditions.waveMax) })}`);
+    }
+    if (conditions.windMax !== null) {
+      details.push(`💨 ${label('wind')} ${t('upToSpeed', { value: formatNumber(conditions.windMax) })}`);
+    }
+    if (conditions.sunrise !== null && conditions.sunset !== null) {
+      details.push(`☀️ ${label('sun')} 🌅 ${time(conditions.sunrise)} · 🌇 ${time(conditions.sunset)}`);
+    }
+    if (details.length) lines.push('', ...details);
   }
-  lines.push('', `🌍 <i>${escapeHtml(tz)}</i>`);
+  lines.push(DIVIDER);
 
+  if (forecast.hasTides) lines.push(...renderSchedule(forecast, time));
+  lines.push(`🌍 <i>${escapeHtml(tz)}</i>`);
   return lines.join('\n');
+}
+
+function renderSchedule(forecast: TideForecast, time: (value: number) => string): string[] {
+  const { today } = forecast;
+  const lines: string[] = [];
+
+  // Today's tides
+  const todayLabel = formatDate(today.date, { weekday: 'short', day: 'numeric', month: 'short' });
+  lines.push(`📅 <b>${t('today')}, ${todayLabel}</b>`);
+  const todayRows = today.events.map(
+    (event) =>
+      `• <b>${time(event.time)}</b>  ${TIDE_ICON[event.type]} ${t(event.type)} · <i>${formatHeight(event.height)}</i>`,
+  );
+  lines.push(`<blockquote>${todayRows.length ? todayRows.join('\n') : `<i>${t('noTides')}</i>`}</blockquote>`);
+
+  // Upcoming days, collapsed by default
+  lines.push(`🗓 <b>${t('upcoming', { days: forecast.upcoming.length })}</b>`);
+  const upcomingRows = forecast.upcoming.map((day) => {
+    // Built by hand: Intl formats { weekday, day } as "4 Sun".
+    const dayLabel = `${formatDate(day.date, { weekday: 'short' })} ${Number(day.date.slice(8))}`;
+    return `<b>${dayLabel}</b>  ${renderCompact(day.events, time)}`;
+  });
+  lines.push(`<blockquote expandable>${upcomingRows.join('\n')}</blockquote>`);
+  return lines;
 }
 
 function renderCompact(events: TideEvent[], time: (value: number) => string): string {

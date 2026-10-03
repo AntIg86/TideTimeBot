@@ -1,6 +1,6 @@
 # Tide Time Bot 🌊
 
-A Telegram bot that shows tide times for any coastal location: a detailed view for today (current trend, next tide, heights, waves, wind, sunrise/sunset) plus high/low tide times for the next 7 days. Data comes from Open-Meteo and OpenStreetMap Nominatim.
+A Telegram bot that shows tide times for any coastal location: a detailed view for today (current trend, next tide, heights, waves, wind, sunrise/sunset) plus high/low tide times for the next 7 days in a collapsible block. Data comes from Open-Meteo and OpenStreetMap Nominatim.
 
 ## Features
 
@@ -8,7 +8,8 @@ A Telegram bot that shows tide times for any coastal location: a detailed view f
 - **7-day outlook**: high and low tide times for each of the next 7 days.
 - **Marine conditions**: today's maximum wave height and wind speed, sunrise and sunset.
 - **City search or shared location**: send a city name or a location pin 📍.
-- **Russian and English**: picked automatically from the user's Telegram language.
+- **Nearest sea point**: if the place itself has no sea-level data (bays, fjords, river mouths), tides come from the nearest sea point within 60 km, and the message says how far it is.
+- **Tideless seas**: for places like the Black Sea or the Baltic, where the level only drifts with wind, the bot says so instead of listing noise.
 - **Correct local time**: times are computed from UTC timestamps and the place's IANA timezone, so DST changes inside the forecast window are handled.
 
 ## Prerequisites
@@ -85,7 +86,7 @@ curl "https://api.telegram.org/bot$BOT_TOKEN/setWebhook?url=https://your-app.exa
 
 ## How tides are computed
 
-Open-Meteo provides hourly `sea_level_height_msl`. High and low tides are local maxima/minima of this series, refined with a parabola through the three neighbouring samples to get minute-level times and heights. Heights are relative to mean sea level, not to chart datum, so they differ from official port tide tables. Treat the data as guidance, not for navigation.
+Open-Meteo provides hourly `sea_level_height_msl`. High and low tides are found with a zigzag filter: an extremum counts only once the level has moved away from it by at least 10 cm, which removes rounding noise. Times and heights are refined with a parabola through the neighbouring samples. A place counts as tideless when there is less than one extremum per day. Heights are relative to mean sea level, not to chart datum, so they differ from official port tide tables. Treat the data as guidance, not for navigation.
 
 ## Project structure
 
@@ -95,11 +96,13 @@ src/bot.ts                Bot setup, handlers, error handling
 src/polling.ts            Long-polling entry point (dev)
 src/server.ts             Webhook HTTP server (Docker/Render)
 src/config.ts             Environment variables
-src/i18n.ts               Russian/English messages
+src/messages.ts           User-facing texts
 src/errors.ts             User-facing errors
 src/handlers/             Telegram command and message handlers
 src/services/             Nominatim and Open-Meteo clients
 src/domain/tides.ts       Tide extremes and forecast assembly (pure)
+src/domain/geo.ts         Distances and search rings (pure)
+src/webhook.ts            Webhook handler shared by Vercel and the server
 src/format/forecast.ts    Telegram HTML rendering (pure)
 tests/                    Vitest unit tests
 ```

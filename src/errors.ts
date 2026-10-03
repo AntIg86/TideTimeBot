@@ -1,6 +1,6 @@
-import type { MessageKey, MessageParams } from './i18n';
+import type { MessageKey, MessageParams } from './messages';
 
-/** An error whose (localized) message is safe to show to the user. */
+/** An error whose message is safe to show to the user. */
 export class UserError extends Error {
   constructor(
     readonly key: MessageKey,
