@@ -59,7 +59,8 @@ interface Sections {
   details: string[];
   schedule: {
     todayTitle: string;
-    todayRows: string[];
+    /** Today's tides as table cells; `isNext` marks the upcoming one. */
+    today: Array<{ time: string; tide: string; height: string; isNext: boolean }>;
     upcomingTitle: string;
     /** Per day: bold label and one cell per tide (icon + time). */
     upcoming: Array<{ label: string; tides: string[] }>;
@@ -113,9 +114,12 @@ function buildSections(forecast: TideForecast, place: PlaceLabel): Sections {
   const schedule = forecast.hasTides
     ? {
         todayTitle: `📅 <b>${t('today')}, ${formatDate(today.date, { weekday: 'short', day: 'numeric', month: 'short' })}</b>`,
-        todayRows: today.events.map(
-          (event) => `• <b>${time(event.time)}</b>  ${TIDE_ICON[event.type]} ${t(event.type)} · ${formatHeight(event.height)}`,
-        ),
+        today: today.events.map((event) => ({
+          time: time(event.time),
+          tide: `${TIDE_ICON[event.type]} ${t(event.type)}`,
+          height: formatHeight(event.height),
+          isNext: event.time === forecast.next?.time,
+        })),
         upcomingTitle: `🗓 <b>${t('upcoming', { days: forecast.upcoming.length })}</b>`,
         upcoming: forecast.upcoming.map((day) => ({
           // Built by hand: Intl formats { weekday, day } as "4 Sun".
@@ -136,7 +140,9 @@ export function renderForecast(forecast: TideForecast, place: PlaceLabel): strin
   lines.push(DIVIDER);
 
   if (schedule) {
-    const todayRows = schedule.todayRows.length ? schedule.todayRows.join('\n') : `<i>${t('noTides')}</i>`;
+    const todayRows = schedule.today.length
+      ? schedule.today.map((row) => `• <b>${row.time}</b>  ${row.tide} · ${row.height}`).join('\n')
+      : `<i>${t('noTides')}</i>`;
     const upcomingRows = schedule.upcoming.map(
       (day) => `${day.label}  ${day.tides.length ? day.tides.join(' · ') : '—'}`,
     );
@@ -153,19 +159,32 @@ export function renderForecast(forecast: TideForecast, place: PlaceLabel): strin
 }
 
 /**
- * Rich message HTML (sendRichMessage, Bot API 10.3+): the same layout, but the upcoming
- * days are a real table inside a collapsible <details> block, so the columns line up.
+ * Rich message HTML (sendRichMessage, Bot API 10.3+): today's tides and the upcoming days are
+ * real tables (the week inside a collapsible <details> block), so the columns line up.
  */
 export function renderRichForecast(forecast: TideForecast, place: PlaceLabel): string {
   const { header, now, details, schedule, footer } = buildSections(forecast, place);
   const paragraph = (lines: string[]) => `<p>${lines.join('<br>')}</p>`;
-  const blocks = [paragraph(header), '<hr/>', paragraph(now)];
+  // No <hr/> here: tables, <details> and paragraph spacing already separate the parts in
+  // rich messages, and extra rules ended up between blocks that belong together.
+  const blocks = [paragraph(header), paragraph(now)];
   if (details.length) blocks.push(paragraph(details));
-  blocks.push('<hr/>');
 
   if (schedule) {
-    const todayRows = schedule.todayRows.length ? schedule.todayRows.join('<br>') : `<i>${t('noTides')}</i>`;
-    blocks.push(paragraph([schedule.todayTitle]), `<blockquote>${todayRows}</blockquote>`);
+    blocks.push(`<h4>${schedule.todayTitle}</h4>`);
+    if (schedule.today.length === 0) {
+      blocks.push(paragraph([`<i>${t('noTides')}</i>`]));
+    } else {
+      // The upcoming tide is highlighted so it stands out among today's rows.
+      const mark = (text: string, isNext: boolean) => (isNext ? `<mark>${text}</mark>` : text);
+      const rows = schedule.today.map(
+        (row) =>
+          `<tr><td>${mark(`<b>${row.time}</b>`, row.isNext)}</td><td>${mark(row.tide, row.isNext)}</td>` +
+          `<td align="right">${mark(row.height, row.isNext)}</td></tr>`,
+      );
+      const head = `<tr><th>${t('timeColumn')}</th><th>${t('tideColumn')}</th><th align="right">${t('heightColumn')}</th></tr>`;
+      blocks.push(`<table bordered striped>${head}${rows.join('')}</table>`);
+    }
 
     // Rows have 2–5 tides; pad them so every row has the same number of cells.
     const columns = Math.max(1, ...schedule.upcoming.map((day) => day.tides.length));
@@ -178,6 +197,6 @@ export function renderRichForecast(forecast: TideForecast, place: PlaceLabel): s
     );
   }
 
-  blocks.push(`<footer>${footer}</footer>`);
+  blocks.push(paragraph([footer]));
   return blocks.join('');
 }
