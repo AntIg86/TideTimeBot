@@ -1,6 +1,6 @@
-import type { Context, Filter } from 'grammy';
+import { GrammyError, type Context, type Filter } from 'grammy';
 import { buildForecast } from '../domain/tides';
-import { renderForecast } from '../format/forecast';
+import { renderForecast, renderRichForecast } from '../format/forecast';
 import { getCoordinates, reverseGeocode, type Place } from '../services/geocoding';
 import { fetchForecast } from '../services/openMeteo';
 
@@ -15,7 +15,14 @@ async function replyWithForecast(ctx: Context, findPlace: () => Promise<Place>) 
   const forecast = buildForecast({ ...raw, now: Date.now(), days: UPCOMING_DAYS });
 
   const label = { name: place.shortName, seaPointKm: raw.seaPoint?.distanceKm };
-  await ctx.reply(renderForecast(forecast, label), { parse_mode: 'HTML' });
+  try {
+    await ctx.replyWithRichMessage({ html: renderRichForecast(forecast, label) });
+  } catch (error) {
+    // Rich messages are new (Bot API 10.3); if Telegram rejects one, send the classic layout.
+    if (!(error instanceof GrammyError)) throw error;
+    console.error('Rich message rejected, falling back to classic HTML:', error.description);
+    await ctx.reply(renderForecast(forecast, label), { parse_mode: 'HTML' });
+  }
 }
 
 export async function cityHandler(ctx: Filter<Context, 'message:text'>) {
