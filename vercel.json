@@ -1,6 +1,7 @@
 {
   "version": 2,
-  "outputDirectory": "dist",
+  "buildCommand": "pnpm typecheck",
+  "outputDirectory": "public",
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index" }
   ]

@@ -53,3 +53,7 @@ tmp/
 temp/
 
 .claude/
+.vercel
+.env*
+
+!.env.example

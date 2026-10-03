@@ -10,6 +10,7 @@ const CACHE_FILE = process.env.VERCEL
   ? '/tmp/cities_cache.json'
   : path.join(process.cwd(), 'cities_cache.json');
 
+const MAX_QUERY_LENGTH = 100;
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
 const USER_AGENT = `TideTimeBot/1.1${config.nominatimEmail ? ` (${config.nominatimEmail})` : ''}`;
 
@@ -74,6 +75,10 @@ function nominatimRequest(endpoint: string, params: Record<string, string>, loca
 
 export async function getCoordinates(city: string, locale: Locale): Promise<Place> {
   const query = city.trim();
+  if (query.length > MAX_QUERY_LENGTH) {
+    throw new UserError('queryTooLong');
+  }
+
   const key = `${locale}:${query.toLowerCase()}`;
   const entries = await getCache();
 

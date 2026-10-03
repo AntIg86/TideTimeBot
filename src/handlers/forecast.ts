@@ -1,12 +1,10 @@
 import type { Context, Filter } from 'grammy';
 import { buildForecast } from '../domain/tides';
-import { UserError } from '../errors';
 import { renderForecast } from '../format/forecast';
 import { resolveLocale, type Locale } from '../i18n';
 import { getCoordinates, reverseGeocode, type Place } from '../services/geocoding';
 import { fetchForecast } from '../services/openMeteo';
 
-const MAX_QUERY_LENGTH = 100;
 const UPCOMING_DAYS = 7;
 
 async function replyWithForecast(ctx: Context, locale: Locale, findPlace: () => Promise<Place>) {
@@ -24,10 +22,6 @@ export async function cityHandler(ctx: Filter<Context, 'message:text'>) {
   const city = ctx.message.text.trim();
   // Unknown commands are not city names.
   if (!city || city.startsWith('/')) return;
-
-  if (city.length > MAX_QUERY_LENGTH) {
-    throw new UserError('queryTooLong');
-  }
 
   const locale = resolveLocale(ctx.from.language_code);
   await replyWithForecast(ctx, locale, () => getCoordinates(city, locale));

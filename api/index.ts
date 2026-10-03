@@ -1,6 +1,5 @@
-import { webhookCallback } from 'grammy';
 import { bot } from '../src/bot';
-import { config } from '../src/config';
+import { createWebhookHandler } from '../src/webhook';
 
 // Vercel Serverless Function: every request is rewritten here (see vercel.json).
-export default webhookCallback(bot, 'http', { secretToken: config.webhookSecret });
+export default createWebhookHandler(bot);
