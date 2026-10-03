@@ -1,6 +1,6 @@
 import { webhookCallback } from 'grammy';
 import { bot } from '../src/bot';
+import { config } from '../src/config';
 
-// Vercel Serverless Function Handler
-// grammY's webhookCallback creates a handler compatible with standard HTTP requests (req, res)
-export default webhookCallback(bot, 'http');
+// Vercel Serverless Function: every request is rewritten here (see vercel.json).
+export default webhookCallback(bot, 'http', { secretToken: config.webhookSecret });

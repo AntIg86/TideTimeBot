@@ -1,26 +1,20 @@
-# Use a lightweight Node.js image
-FROM node:lts-alpine
-
-# Set the working directory
+FROM node:24-alpine AS base
 WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@11.1.3 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Install pnpm globally
-RUN npm install -g pnpm
-
-# Copy package.json and pnpm-lock.yaml first for better caching
-COPY package.json pnpm-lock.yaml ./
-
-# Install dependencies using pnpm
+# Build stage: full install + TypeScript compile
+FROM base AS build
 RUN pnpm install --frozen-lockfile
-
-# Copy the rest of the application code
-COPY . .
-
-# Build the TypeScript code
+COPY tsconfig.json ./
+COPY src ./src
 RUN pnpm run build
 
-# Expose the port the app runs on
+# Runtime stage: production dependencies only
+FROM base AS runtime
+ENV NODE_ENV=production
+RUN pnpm install --prod --frozen-lockfile
+COPY --from=build /app/dist ./dist
+USER node
 EXPOSE 3000
-
-# Command to run the bot
-CMD ["node", "dist/bot.js"]
+CMD ["node", "dist/server.js"]
