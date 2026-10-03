@@ -52,34 +52,45 @@ function formatHeight(height: number): string {
   return `${sign}${formatNumber(Math.abs(rounded))} ${t('meters')}`;
 }
 
-export function renderForecast(forecast: TideForecast, place: PlaceLabel): string {
+/** Message parts as inline HTML lines, shared by the classic and the rich layout. */
+interface Sections {
+  header: string[];
+  now: string[];
+  details: string[];
+  schedule: {
+    todayTitle: string;
+    todayRows: string[];
+    upcomingTitle: string;
+    /** Per day: bold label and one cell per tide (icon + time). */
+    upcoming: Array<{ label: string; tides: string[] }>;
+  } | null;
+  footer: string;
+}
+
+function buildSections(forecast: TideForecast, place: PlaceLabel): Sections {
   const { timezone: tz, today } = forecast;
   const time = (value: number) => formatTime(value, tz);
   const label = (key: MessageKey) => `<b>${t(key)}:</b>`;
-  const lines: string[] = [];
 
-  // Header
-  lines.push(`🌊 <b>${t('title')}</b>`, `📍 <b>${escapeHtml(place.name)}</b>`);
+  const header = [`🌊 <b>${t('title')}</b>`, `📍 <b>${escapeHtml(place.name)}</b>`];
   if (place.seaPointKm !== undefined) {
-    lines.push(`<i>🧭 ${t('seaPoint', { km: Math.round(place.seaPointKm) })}</i>`);
+    header.push(`<i>🧭 ${t('seaPoint', { km: Math.round(place.seaPointKm) })}</i>`);
   }
-  lines.push(DIVIDER);
 
-  // Right now
+  const now: string[] = [];
   if (!forecast.hasTides) {
-    lines.push(`〰️ ${t('negligibleTides')}`);
+    now.push(`〰️ ${t('negligibleTides')}`);
   } else {
     const trendIcon = forecast.trend === 'falling' ? '📉' : '📈';
-    lines.push(`${trendIcon} ${label('now')} ${t(forecast.trend ?? 'unknown')}`);
+    now.push(`${trendIcon} ${label('now')} ${t(forecast.trend ?? 'unknown')}`);
     if (forecast.next) {
       const { next } = forecast;
       const nextDay = dayKey(next.time, tz);
       const dayNote = nextDay === today.date ? '' : ` (${formatDate(nextDay, { weekday: 'short' })})`;
-      lines.push(`🔜 ${label('next')} ${TIDE_ICON[next.type]} ${t(next.type)} ${t('at')} <b>${time(next.time)}</b>${dayNote}`);
+      now.push(`🔜 ${label('next')} ${TIDE_ICON[next.type]} ${t(next.type)} ${t('at')} <b>${time(next.time)}</b>${dayNote}`);
     }
   }
 
-  // Today's conditions
   const details: string[] = [];
   if (forecast.waterTemperature !== null) {
     details.push(`🌡️ ${label('water')} ${t('degrees', { value: formatNumber(forecast.waterTemperature) })}`);
@@ -97,39 +108,76 @@ export function renderForecast(forecast: TideForecast, place: PlaceLabel): strin
       details.push(`☀️ ${label('sun')} 🌅 ${time(conditions.sunrise)} · 🌇 ${time(conditions.sunset)}`);
     }
   }
+
+  const tide = (event: TideEvent) => `${TIDE_ICON[event.type]} ${time(event.time)}`;
+  const schedule = forecast.hasTides
+    ? {
+        todayTitle: `📅 <b>${t('today')}, ${formatDate(today.date, { weekday: 'short', day: 'numeric', month: 'short' })}</b>`,
+        todayRows: today.events.map(
+          (event) => `• <b>${time(event.time)}</b>  ${TIDE_ICON[event.type]} ${t(event.type)} · ${formatHeight(event.height)}`,
+        ),
+        upcomingTitle: `🗓 <b>${t('upcoming', { days: forecast.upcoming.length })}</b>`,
+        upcoming: forecast.upcoming.map((day) => ({
+          // Built by hand: Intl formats { weekday, day } as "4 Sun".
+          label: `<b>${formatDate(day.date, { weekday: 'short' })} ${Number(day.date.slice(8))}</b>`,
+          tides: day.events.map(tide),
+        })),
+      }
+    : null;
+
+  return { header, now, details, schedule, footer: `🌍 <i>${escapeHtml(tz)}</i>` };
+}
+
+/** Classic Telegram HTML (sendMessage with parse_mode HTML). */
+export function renderForecast(forecast: TideForecast, place: PlaceLabel): string {
+  const { header, now, details, schedule, footer } = buildSections(forecast, place);
+  const lines = [...header, DIVIDER, ...now];
   if (details.length) lines.push('', ...details);
   lines.push(DIVIDER);
 
-  if (forecast.hasTides) lines.push(...renderSchedule(forecast, time));
-  lines.push(`🌍 <i>${escapeHtml(tz)}</i>`);
+  if (schedule) {
+    const todayRows = schedule.todayRows.length ? schedule.todayRows.join('\n') : `<i>${t('noTides')}</i>`;
+    const upcomingRows = schedule.upcoming.map(
+      (day) => `${day.label}  ${day.tides.length ? day.tides.join(' · ') : '—'}`,
+    );
+    lines.push(
+      schedule.todayTitle,
+      `<blockquote>${todayRows}</blockquote>`,
+      schedule.upcomingTitle,
+      `<blockquote expandable>${upcomingRows.join('\n')}</blockquote>`,
+    );
+  }
+
+  lines.push(footer);
   return lines.join('\n');
 }
 
-function renderSchedule(forecast: TideForecast, time: (value: number) => string): string[] {
-  const { today } = forecast;
-  const lines: string[] = [];
+/**
+ * Rich message HTML (sendRichMessage, Bot API 10.3+): the same layout, but the upcoming
+ * days are a real table inside a collapsible <details> block, so the columns line up.
+ */
+export function renderRichForecast(forecast: TideForecast, place: PlaceLabel): string {
+  const { header, now, details, schedule, footer } = buildSections(forecast, place);
+  const paragraph = (lines: string[]) => `<p>${lines.join('<br>')}</p>`;
+  const blocks = [paragraph(header), '<hr/>', paragraph(now)];
+  if (details.length) blocks.push(paragraph(details));
+  blocks.push('<hr/>');
 
-  // Today's tides
-  const todayLabel = formatDate(today.date, { weekday: 'short', day: 'numeric', month: 'short' });
-  lines.push(`📅 <b>${t('today')}, ${todayLabel}</b>`);
-  const todayRows = today.events.map(
-    (event) =>
-      `• <b>${time(event.time)}</b>  ${TIDE_ICON[event.type]} ${t(event.type)} · ${formatHeight(event.height)}`,
-  );
-  lines.push(`<blockquote>${todayRows.length ? todayRows.join('\n') : `<i>${t('noTides')}</i>`}</blockquote>`);
+  if (schedule) {
+    const todayRows = schedule.todayRows.length ? schedule.todayRows.join('<br>') : `<i>${t('noTides')}</i>`;
+    blocks.push(paragraph([schedule.todayTitle]), `<blockquote>${todayRows}</blockquote>`);
 
-  // Upcoming days, collapsed by default
-  lines.push(`🗓 <b>${t('upcoming', { days: forecast.upcoming.length })}</b>`);
-  const upcomingRows = forecast.upcoming.map((day) => {
-    // Built by hand: Intl formats { weekday, day } as "4 Sun".
-    const dayLabel = `${formatDate(day.date, { weekday: 'short' })} ${Number(day.date.slice(8))}`;
-    return `<b>${dayLabel}</b>  ${renderCompact(day.events, time)}`;
-  });
-  lines.push(`<blockquote expandable>${upcomingRows.join('\n')}</blockquote>`);
-  return lines;
-}
+    // Rows have 2–5 tides; pad them so every row has the same number of cells.
+    const columns = Math.max(1, ...schedule.upcoming.map((day) => day.tides.length));
+    const rows = schedule.upcoming.map((day) => {
+      const cells = Array.from({ length: columns }, (_, i) => day.tides[i] ?? (i === 0 ? '—' : ''));
+      return `<tr><td>${day.label}</td>${cells.map((cell) => `<td>${cell}</td>`).join('')}</tr>`;
+    });
+    blocks.push(
+      `<details><summary>${schedule.upcomingTitle}</summary><table striped compact>${rows.join('')}</table></details>`,
+    );
+  }
 
-function renderCompact(events: TideEvent[], time: (value: number) => string): string {
-  if (events.length === 0) return '—';
-  return events.map((event) => `${TIDE_ICON[event.type]} ${time(event.time)}`).join(' · ');
+  blocks.push(`<footer>${footer}</footer>`);
+  return blocks.join('');
 }

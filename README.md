@@ -1,6 +1,6 @@
 # Tide Time Bot 🌊
 
-A Telegram bot that shows tide times for any coastal location: a detailed view for today (current trend, next tide, heights, waves, wind, sunrise/sunset) plus high/low tide times for the next 7 days in a collapsible block. Data comes from Open-Meteo and OpenStreetMap Nominatim.
+A Telegram bot that shows tide times for any coastal location: a detailed view for today (current trend, next tide, heights, waves, wind, sunrise/sunset) plus high/low tide times for the next 7 days as a table in a collapsible block. Replies use Telegram rich messages (Bot API 10.3, `sendRichMessage`) and fall back to classic HTML if Telegram rejects one. Data comes from Open-Meteo and OpenStreetMap Nominatim.
 
 ## Features
 

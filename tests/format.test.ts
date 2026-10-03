@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TideForecast } from '../src/domain/tides';
-import { escapeHtml, renderForecast } from '../src/format/forecast';
+import { escapeHtml, renderForecast, renderRichForecast } from '../src/format/forecast';
 
 const timezone = 'Europe/Lisbon';
 const forecast: TideForecast = {
@@ -89,5 +89,42 @@ describe('renderForecast', () => {
 
   it('escapes the place name', () => {
     expect(renderForecast(forecast, { name: 'A<b>&' })).toContain('📍 <b>A&lt;b&gt;&amp;</b>');
+  });
+});
+
+describe('renderRichForecast', () => {
+  const html = renderRichForecast(forecast, { name: 'Lisbon, Portugal' });
+
+  it('uses paragraphs and rules instead of newlines', () => {
+    expect(html).not.toContain('\n');
+    expect(html.startsWith('<p>🌊 <b>Tide forecast</b><br>📍 <b>Lisbon, Portugal</b></p><hr/>')).toBe(true);
+    expect(html).toContain('<blockquote>• <b>05:12</b>  🌊 high tide · +1.4 m<br>• <b>11:30</b>');
+    expect(html.endsWith('<footer>🌍 <i>Europe/Lisbon</i></footer>')).toBe(true);
+  });
+
+  it('puts the upcoming days in a padded table inside details', () => {
+    expect(html).toContain(
+      '<details><summary>🗓 <b>Next 2 days</b></summary><table striped compact>' +
+        '<tr><td><b>Sun 4</b></td><td>🏖️ 00:40</td></tr>' +
+        '<tr><td><b>Mon 5</b></td><td>—</td></tr>' +
+        '</table></details>',
+    );
+  });
+
+  it('pads shorter rows to the widest one', () => {
+    const wide = {
+      ...forecast,
+      upcoming: [
+        { date: '2026-10-04', events: forecast.today.events },
+        { date: '2026-10-05', events: forecast.today.events.slice(0, 1) },
+      ],
+    };
+    expect(renderRichForecast(wide, { name: 'X' })).toContain('<tr><td><b>Mon 5</b></td><td>🌊 05:12</td><td></td><td></td></tr>');
+  });
+
+  it('skips the schedule for tideless seas', () => {
+    const tideless = renderRichForecast({ ...forecast, hasTides: false, trend: null, next: null }, { name: 'Sochi' });
+    expect(tideless).not.toContain('<table');
+    expect(tideless).toContain('〰️ Tides here are negligible');
   });
 });
