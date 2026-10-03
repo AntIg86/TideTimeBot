@@ -15,6 +15,8 @@ FROM base AS runtime
 ENV NODE_ENV=production
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=build /app/dist ./dist
+# The geocoding cache is written to the working directory.
+RUN chown node:node /app
 USER node
 EXPOSE 3000
 CMD ["node", "dist/server.js"]
